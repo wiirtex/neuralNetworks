@@ -1,0 +1,159 @@
+//source: https://neurohive.io/ru/tutorial/prostaja-nejronnaja-set-python/
+
+
+// Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
+//
+
+#include <iostream>
+#include <vector>
+
+typedef double dd;
+
+using namespace std;
+
+template <int q, int w>
+class Matrix {
+public:
+    const int n = q; const int m = w;
+    vector<vector<dd>> data;
+
+    Matrix() {
+        data.resize(n);
+        for (int i = 0; i < n; i++) {
+            data[i].resize(m);
+        }
+    }
+
+    void Fill(vector<vector<dd>> data_) {
+        if (data_.size() != data.size()) {
+            return;
+        }
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < m; j++) {
+                if (data[i].size() != data_[i].size()) {
+                    return;
+                }
+                data[i][j] = data_[i][j];
+            }
+        }
+    }
+
+    void Transpose() {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < i; j++)
+            {
+                swap(data[i][j], data[j][i]);
+            }
+        }
+    }
+    template <int k, int p>
+    friend Matrix<k, p> operator* (Matrix<k, p>& a, const Matrix<k, p>& b);
+};
+
+template <int n, int m>
+Matrix<n, m> operator*(Matrix<n, m>& a, const Matrix<n, m>& b)
+{
+    Matrix<n, m> res;
+    
+    for (int i = 0; i < a.n; i++) {
+        for (int k = 0; k < b.m; k++) {
+            for (int j = 0; j < b.m; j++) {
+                res.data[i][k] += a.data[i][j] * b.data[j][k];
+            }
+        }
+    }
+    return res;
+}
+
+template <int n>
+class Layer : public Matrix<n, 1> {
+public:
+    Layer() : Matrix<n, 1>() {}
+};
+
+template <int n>
+class Transition : public Matrix<n, 1> {
+public:
+    Transition() : Matrix<n, 1>() {
+        for (int i = 0; i < n; i++) {
+            this->data[i][0] = rand() % 999983 / 999983.;
+        }
+    }
+    Transition(vector<dd> p) : Matrix<n, 1>() {
+        for (int i = 0; i < n; i++) {
+            this->data[i][0] = p[i];
+        }
+    }
+};
+
+vector<vector<vector<dd>>> inputs = { { {0}, {0}, {1}}, {{1}, {1}, {1}}, {{1}, {0}, {1}}, {{0}, {1}, {1} } };
+vector<dd> outputs = { 0, 1, 1, 0 };
+vector<vector<vector<dd>>> check_inputs = { { {1}, {0}, {0} } };
+int epochs = 10000;
+
+inline dd normalize(dd x) {
+    return 1. / (1 + pow(2.7182818284, -x));
+}
+
+void train() {
+    dd coefficient = 0.1;
+    srand(10000);
+    Layer<3> input;
+    Layer<1> output;
+    Transition<3> t;
+    for (int i = 0; i < 3; i++) {
+        cout << t.data[i][0] << " ";
+    }
+    for (int e = 0; e < epochs; e++) {
+        cout << endl << "Epoch number: " << e << endl;
+        for (int i = 0; i < inputs.size(); i++) {
+            input.Fill(inputs[i]);
+            dd inp = 0;
+            for (int p = 0; p < 3; p++) {
+                inp += input.data[p][0] * t.data[p][0];
+            }
+            inp = normalize(inp);
+            dd error = outputs[i] - inp;
+            vector<dd> dw(3);
+            for (int p = 0; p < 3; p++) {
+                dw[p] = input.data[p][0] * error * inp * (1 - inp);
+                t.data[p][0] += dw[p];
+            }
+            cout << "   Error: " << error;
+        }
+    }
+    cout << endl << "Weights: ";
+    for (int i = 0; i < 3; i++) {
+        cout << t.data[i][0] << ", ";
+    }
+}
+
+void show() {
+    dd coefficient = 0.1;
+    srand(10000);
+    Layer<3> input;
+    Layer<1> output;
+    Transition<3> t({ 9.67335, -0.208361, -4.6295 });
+    for (int i = 0; i < check_inputs.size(); i++) {
+        input.Fill(check_inputs[i]);
+        cout << "Input values: ";
+        for (int q = 0; q < check_inputs[i].size(); q++) {
+            cout << check_inputs[i][q][0] << ", ";
+        }
+        dd inp = 0;
+        
+        for (int p = 0; p < 3; p++) {
+            inp += input.data[p][0] * t.data[p][0];
+        }
+        inp = normalize(inp);
+        cout << "   Output value: " << inp << endl;
+    }
+}
+
+int main()
+{
+    show();
+}
+
+
+// 9.67335, -0.208361, -4.6295 
