@@ -1,12 +1,13 @@
 
 // I know, this code is a piece of code, but it is just a glimpse into NN.
 
-// source: https://neurohive.io/ru/tutorial/prostaja-nejronnaja-set-python/
+// source: https://neurohive.io/ru/tutorial/prostaja-nejronnaja-set-python/ -- Ok, I have already went away from this source, but ok. It is.
 
 // Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
 //
 
 #include <iostream>
+#include <iomanip>
 #include <vector>
 
 typedef double dd;
@@ -26,28 +27,31 @@ public:
         }
     }
 
-    void Fill(vector<vector<dd>> data_) {
-        if (data_.size() != data.size()) {
-            return;
+
+
+    void Transpose() {
+        vector<vector<dd>> newdata(m);
+        for (int i = 0; i < n; i++) {
+            newdata[i].resize(n);
+            for (int j = 0; j < m; j++)
+            {
+                newdata[j][i] = data[i][j];
+            }
         }
+        swap(m, n);
+        swap(q, w);
+        data = newdata;
+    }
+
+    void Print(const char* sep = " ", const char* lineend = "\n") {
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < m; j++) {
-                if (data[i].size() != data_[i].size()) {
-                    return;
-                }
-                data[i][j] = data_[i][j];
+                cout << data[i][j] << sep;
             }
+            cout << lineend;
         }
     }
 
-    void Transpose() {
-        for (int i = 0; i < n; i++) {
-            for (int j = 0; j < i; j++)
-            {
-                swap(data[i][j], data[j][i]);
-            }
-        }
-    }
     template <int k, int p>
     friend Matrix<k, p> operator* (Matrix<k, p>& a, const Matrix<k, p>& b);
 };
@@ -67,95 +71,141 @@ Matrix<n, m> operator*(Matrix<n, m>& a, const Matrix<n, m>& b)
     return res;
 }
 
-template <int n>
-class Layer : public Matrix<n, 1> {
-public:
-    Layer() : Matrix<n, 1>() {}
-};
-
-template <int n>
-class Transition : public Matrix<n, 1> {
-public:
-    Transition() : Matrix<n, 1>() {
-        for (int i = 0; i < n; i++) {
-            this->data[i][0] = rand() % 999983 / 999983.;
-        }
-    }
-    Transition(vector<dd> p) : Matrix<n, 1>() {
-        for (int i = 0; i < n; i++) {
-            this->data[i][0] = p[i];
-        }
-    }
-};
-
-vector<vector<vector<dd>>> inputs = { { {0}, {0}, {1}}, {{1}, {1}, {1}}, {{1}, {0}, {1}}, {{0}, {1}, {1} } };
-vector<dd> outputs = { 0, 1, 1, 0 };
-vector<vector<vector<dd>>> check_inputs = { { {1}, {0}, {0} } };
-int epochs = 10000;
+dd coefficient = 1;
+dd speed_coefficient = 1;
 
 inline dd normalize(dd x) {
     return 1. / (1 + pow(2.7182818284, -x));
 }
 
-void train() {
-    dd coefficient = 0.1;
-    srand(10000);
-    Layer<3> input;
-    Layer<1> output;
-    Transition<3> t;
-    for (int i = 0; i < 3; i++) {
-        cout << t.data[i][0] << " ";
+template <int n, int next_layer_size = 0>
+class Layer : public Matrix<n, 1> {
+public:
+    Layer() : Matrix<n, 1>() {
+        sigmas.resize(n);
+        outs.resize(n);
+        weights.resize(n);
+        for (int i = 0; i < n; i++) {
+            weights[i].resize(next_layer_size);
+            for (int j = 0; j < next_layer_size; j++) {
+                weights[i][j] = rand() % 999983 / 999983.;
+            }
+        }
     }
+
+    void SetWeights(vector<vector<dd>> weights_) {
+        if (weights.size() != weights_.size()) {
+            throw length_error("sizes are not equal");
+        }
+        weights = weights_;
+    }
+    vector<dd> sigmas;
+    vector<vector<dd>> weights;
+    vector<dd> outs;
+    void PrintWeights(const char* sep = " ", const char* lineend = "\n") {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < next_layer_size; j++) {
+                cout << weights[i][j] << sep;
+            }
+            cout << lineend;
+        }
+    }
+
+    void PassDataToNextLayer(Layer<next_layer_size>& next_layer) {
+        for (int i = 0; i < next_layer_size; i++) {
+            for (int j = 0; j < n; j++) {
+                next_layer.outs[i] += this->outs[j] * this->weights[j][i];
+            }
+            next_layer.outs[i] = normalize(next_layer.outs[i]);
+        }
+    }
+
+    void CalculateSigmas(Layer<next_layer_size>& next_layer) {
+        for (int i = 0; i < n; i++) {
+            dd s = 0;
+            for (int j = 0; j < next_layer_size; j++) {
+                s += next_layer.sigmas[j] * this->weights[i][j];
+            }
+            this->sigmas[i] = this->outs[i] * (1 - this->outs[i]) * s;
+        }
+    }
+
+    void CalculateSigmas(vector<dd> test_answers) {
+        for (int i = 0; i < n; i++) {
+            this->sigmas[i] = -this->outs[i] * (1 - this->outs[i]) * (test_answers[i] - this->outs[i]);
+        }
+    }
+
+    void CorrectWeights(Layer<next_layer_size>& next_layer) {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < next_layer_size; j++) {
+                dd dw = speed_coefficient * this->outs[i] * next_layer.sigmas[j];
+                this->weights[i][j] -= dw;
+            }
+        }
+    }
+
+    void Fill(vector<dd> data_) {
+        if (outs.size() != data_.size()) {
+            return;
+        }
+        outs = data_;
+    }
+
+};
+
+// rand() % 999983 / 999983.
+
+vector<vector<dd>> inputs = { { 0, 0, 1}, {1, 1, 1}, {1, 0, 1}, {0, 1, 1 } };
+vector<vector<dd>> outputs = { {0}, {1}, {1}, {0} };
+vector<vector<dd>> check_inputs = { { 1, 0, 0 }, { 1, 1, 0 } };
+int epochs = 10000;
+
+
+void train() {
+    srand(10000);
+    Layer<3, 1> input;
+    Layer<1> output;
     for (int e = 0; e < epochs; e++) {
         cout << endl << "Epoch number: " << e << endl;
         for (int i = 0; i < inputs.size(); i++) {
             input.Fill(inputs[i]);
-            dd inp = 0;
-            for (int p = 0; p < 3; p++) {
-                inp += input.data[p][0] * t.data[p][0];
-            }
-            inp = normalize(inp);
-            dd error = outputs[i] - inp;
-            vector<dd> dw(3);
-            for (int p = 0; p < 3; p++) {
-                dw[p] = input.data[p][0] * error * inp * (1 - inp);
-                t.data[p][0] += dw[p];
-            }
+            input.PassDataToNextLayer(output);
+            output.CalculateSigmas(outputs[i]);
+            input.CalculateSigmas(output);
+            input.CorrectWeights(output);
+            dd error = outputs[i][0] - output.outs[0];
             cout << "   Error: " << error;
         }
     }
     cout << endl << "Weights: ";
-    for (int i = 0; i < 3; i++) {
-        cout << t.data[i][0] << ", ";
-    }
+    input.PrintWeights(", ");
 }
 
 void show() {
     dd coefficient = 0.1;
     srand(10000);
-    Layer<3> input;
+    Layer<3, 1> input;
+    input.SetWeights({ {9.67335}, {-0.208361}, {-4.6295} });
     Layer<1> output;
-    Transition<3> t({ 9.67335, -0.208361, -4.6295 });
     for (int i = 0; i < check_inputs.size(); i++) {
         input.Fill(check_inputs[i]);
         cout << "Input values: ";
         for (int q = 0; q < check_inputs[i].size(); q++) {
-            cout << check_inputs[i][q][0] << ", ";
+            cout << check_inputs[i][q] << ", ";
         }
-        dd inp = 0;
-        
-        for (int p = 0; p < 3; p++) {
-            inp += input.data[p][0] * t.data[p][0];
-        }
-        inp = normalize(inp);
-        cout << "   Output value: " << inp << endl;
+        input.PassDataToNextLayer(output);
+        cout << "   Output value: " << output.outs[0] << endl;
     }
 }
 
 int main()
 {
+    cout << fixed << setw(8);
     show();
 }
 
 
-// 9.67335, -0.208361, -4.6295 
+// 9.67335, -0.208361, -4.6295
+
+// 0.350348, 2.10666, 9.33999,
